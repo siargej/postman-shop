@@ -1,0 +1,34 @@
+services:
+  api:
+    image: clue/json-server
+    command: -H 0.0.0.0 /data/db.json --delay 200
+    ports: [ "3001:80" ]
+    volumes: [ "./api/db.json:/data/db.json" ]
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop
+      POSTGRES_DB: shop
+    ports: [ "5432:5432" ]
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  mailpit:
+    image: axllent/mailpit
+    ports: [ "8025:8025", "1025:1025" ]
+
+  verify:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ./verify-service:/app
+    command: ["sh", "-c", "npm install --omit=dev && npm start"]
+    ports: [ "4000:4000" ]
+    environment:
+      PG_URL: postgres://shop:shop@db:5432/shop
+      MAILPIT_API: http://mailpit:8025/api/v1
+    depends_on: [ db, mailpit ]
+    restart: unless-stopped
+

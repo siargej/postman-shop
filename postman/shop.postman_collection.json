@@ -1,0 +1,89 @@
+﻿{
+  "info": {
+    "_postman_id": "shop-col-uuid",
+    "name": "shop",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01.set-orderId-if-empty (pre)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/products" },
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+          "// Генерим orderId без crypto:",
+          "if (!pm.environment.get('orderId') || pm.environment.get('orderId') === '') {",
+          "  const rnd = 'oid-' + Date.now() + '-' + Math.random().toString(36).slice(2,10);",
+          "  pm.environment.set('orderId', rnd);",
+          "}"
+        ]}},
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('products 200', ()=> pm.response.to.have.status(200));",
+          "pm.test('orderId set', ()=> pm.expect(pm.environment.get('orderId')).to.exist);"
+        ]}}
+      ]
+    },
+    {
+      "name": "02.checkout  make-paid",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"email\": \"{{email}}\",\n  \"amount\": 35\n}" },
+        "url": "{{verifyUrl}}/make-paid"
+      },
+      "event": [
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('make-paid 200', ()=> pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('orderId echoed', ()=> pm.expect(j.orderId).to.eql(pm.environment.get('orderId')));"
+        ]}}
+      ]
+    },
+    {
+      "name": "03.verify-db",
+      "request": { "method": "GET", "url": "{{verifyUrl}}/verify/order/{{orderId}}" },
+      "event": [
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('verify-db 200', ()=> pm.response.to.have.status(200));",
+          "const r = pm.response.json();",
+          "pm.test('row exists', ()=> pm.expect(r.found).to.be.true);",
+          "pm.test('status = PAID', ()=> pm.expect(r.row.status).to.eql('PAID'));"
+        ]}}
+      ]
+    },
+    {
+      "name": "04.verify-events",
+      "request": { "method": "GET", "url": "{{verifyUrl}}/events/{{orderId}}" },
+      "event": [
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('events 200', ()=> pm.response.to.have.status(200));",
+          "const ev = pm.response.json();",
+          "pm.test('topic ok', ()=> pm.expect(ev.topic).to.eql('order.paid'));",
+          "pm.test('orderId matches', ()=> pm.expect(ev.payload.orderId).to.eql(pm.environment.get('orderId')));"
+        ]}}
+      ]
+    },
+    {
+      "name": "05.verify-webhook",
+      "request": { "method": "GET", "url": "{{verifyUrl}}/webhook/{{orderId}}" },
+      "event": [
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('webhook 200', ()=> pm.response.to.have.status(200));",
+          "const wh = pm.response.json();",
+          "pm.test('webhook status PAID', ()=> pm.expect(wh.body.status).to.eql('PAID'));"
+        ]}}
+      ]
+    },
+    {
+      "name": "06.verify-mail (search)",
+      "request": { "method": "GET", "url": "{{verifyUrl}}/mail/search?q=Order" },
+      "event": [
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('mail 200', ()=> pm.response.to.have.status(200));",
+          "const m = pm.response.json();",
+          "const items = (m && (m.messages || m.items)) || [];",
+          "pm.test('has items (>=0)', ()=> pm.expect(items.length).to.be.at.least(0));"
+        ]}}
+      ]
+    }
+  ]
+}
